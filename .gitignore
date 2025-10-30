@@ -1,0 +1,63 @@
+# ======================================
+# Discord Music Bot .gitignore
+# ======================================
+
+# Node
+node_modules/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# Build output
+dist/
+build/
+
+# Environment & local config
+.env
+.env.local
+.env.*.local
+
+# macOS 系统文件
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# TypeScript 临时文件
+*.tsbuildinfo
+
+# VSCode / JetBrains IDE
+.vscode/
+.idea/
+*.iml
+
+# Logs
+logs/
+*.log
+logs/*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# Cache / temp
+.tmp/
+.temp/
+.cache/
+__pycache__/
+*.pid
+*.seed
+*.pid.lock
+
+# Test & coverage
+coverage/
+*.lcov
+
+# System
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Optional: docker / deploy
+docker-compose.override.yml
+.env.production
