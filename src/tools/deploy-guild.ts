@@ -10,6 +10,7 @@ import ping, {
 } from "../commands/basic";
 import play from "../commands/play";
 import lyrics from "../commands/lyrics";
+import queue from "../commands/queue";
 
 async function main() {
   const token = process.env.DISCORD_TOKEN!;
@@ -30,6 +31,7 @@ async function main() {
     nowplaying,
     volume,
     play,
+    queue,
     lyrics,
   ].map((c) => (c.data as SlashCommandBuilder).toJSON());
 

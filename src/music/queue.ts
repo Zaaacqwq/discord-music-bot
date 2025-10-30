@@ -168,6 +168,27 @@ export class GuildQueue {
     this.enqueue(track);
   }
 
+  // 只读快照（用于 UI 渲染）
+  snapshot() {
+    return {
+      current: this.current,
+      items: [...this.items],
+    };
+  }
+
+  // 删除第 n 首（从队列的“下一首”开始计 1）
+  removeAt(n: number) {
+    if (n <= 0 || n > this.items.length) return undefined;
+    const [removed] = this.items.splice(n - 1, 1);
+    return removed;
+  }
+
+  // 清空后续；all=true 时连当前也停掉
+  clear(all = false) {
+    this.items = [];
+    if (all) this.stop(); // stop() 会清空 current 并停止播放
+  }
+
   async play(item: QueueItem) {
     this.current = item;
     const { stream, type } = await streamFromUrl(item.url);
