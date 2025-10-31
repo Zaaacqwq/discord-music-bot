@@ -168,12 +168,44 @@ export class GuildQueue {
     this.enqueue(track);
   }
 
+  // 将一组曲目插到“下一首”开始，保持原始顺序
+  enqueueManyNext(tracks: QueueItem[]) {
+    if (!tracks.length) return;
+    if (
+      this.current &&
+      this.player.state.status === AudioPlayerStatus.Playing
+    ) {
+      // [当前正在播]：把新曲目按顺序放到队首
+      this.items = [...tracks, ...this.items];
+    } else {
+      // [未在播]：直接入队并自动起播
+      this.enqueueMany(tracks);
+    }
+  }
+
   // 只读快照（用于 UI 渲染）
   snapshot() {
     return {
       current: this.current,
       items: [...this.items],
     };
+  }
+
+  // 进度（毫秒）
+  getPlaybackMs() {
+    // @discordjs/voice 的资源里有 playbackDuration
+    // 兼容不同版本的内部结构
+    const s: any = (this.player as any)._state ?? this.player.state;
+    const r: any = s?.resource;
+    return r?.playbackDuration ?? 0;
+  }
+
+  // 音量步进
+  volUp(step = 0.1) {
+    this.setVolume(this.volume + step);
+  }
+  volDown(step = 0.1) {
+    this.setVolume(this.volume - step);
   }
 
   // 删除第 n 首（从队列的“下一首”开始计 1）

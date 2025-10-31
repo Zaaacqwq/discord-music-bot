@@ -1,7 +1,8 @@
-// src/commands/play.ts
 import { SlashCommandBuilder, ChatInputCommandInteraction } from "discord.js";
 import { getQueue } from "../music/queue";
 import { resolvePlay } from "../music/router";
+import type { PlayResolved } from "../types";
+import { ensureNowPlayingPanel } from "../ui/nowplaying";
 
 export default {
   data: new SlashCommandBuilder()
@@ -10,7 +11,7 @@ export default {
     .addStringOption((o) =>
       o
         .setName("query")
-        .setDescription("YouTube 链接或关键字（支持“歌手 歌名”）")
+        .setDescription("链接或关键字（支持 Spotify / YouTube / 歌手+歌名）")
         .setRequired(true)
     )
     .addBooleanOption((o) =>
@@ -39,25 +40,50 @@ export default {
     const query = interaction.options.getString("query", true);
     const isNext = interaction.options.getBoolean("next") ?? false;
 
-    const resolved = await resolvePlay(query);
+    const resolved = (await resolvePlay(query)) as PlayResolved;
 
-    if (resolved.kind === "track" && resolved.url) {
+    if (resolved.kind === "track") {
       const track = {
-        title: resolved.title ?? "Track",
+        title: resolved.title,
         url: resolved.url,
         requestedBy: interaction.user.tag,
       };
-
-      if (isNext && typeof (q as any).enqueueNext === "function") {
+      if (isNext && typeof (q as any).enqueueNext === "function")
         (q as any).enqueueNext(track);
-        await interaction.editReply(`⏭️ 已插队为下一首：**${track.title}**`);
-      } else {
-        q.enqueue(track);
-        await interaction.editReply(`🎵 已加入队列：**${track.title}**`);
-      }
+      else q.enqueue(track);
+      await interaction.editReply(
+        `${isNext ? "⏭️ 已插队为下一首" : "🎵 已加入队列"}：**${track.title}**`
+      );
+      await ensureNowPlayingPanel(interaction, q);
       return;
     }
 
-    await interaction.editReply("未找到可播放的音频。");
+    if (resolved.kind === "playlist") {
+      const items = resolved.items.map((i) => ({
+        title: i.title,
+        url: i.url,
+        requestedBy: interaction.user.tag,
+      }));
+
+      if (isNext && typeof (q as any).enqueueManyNext === "function") {
+        (q as any).enqueueManyNext(items);
+        await interaction.editReply(
+          `⏭️ 歌单已插到“下一首”：**${items.length}** 首${
+            resolved.title ? `（${resolved.title}）` : ""
+          }`
+        );
+      } else {
+        q.enqueueMany(items);
+        await interaction.editReply(
+          `📚 歌单加入：**${items.length}** 首${
+            resolved.title ? `（${resolved.title}）` : ""
+          }`
+        );
+      }
+      await ensureNowPlayingPanel(interaction, q);
+      return;
+    }
+
+    await interaction.editReply(`未找到可播放的音频：**${resolved.title}**`);
   },
 };

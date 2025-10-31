@@ -1,6 +1,8 @@
 // src/commands/basic.ts
 import { SlashCommandBuilder, ChatInputCommandInteraction } from "discord.js";
 import { getQueue } from "../music/queue";
+import { buildNowPlayingEmbed, buildControlRow } from "../ui/nowplaying";
+import { startNowPlayingAutoRefresh } from "../ui/autoRefresh";
 
 const ping = {
   data: new SlashCommandBuilder()
@@ -59,11 +61,13 @@ export const nowplaying = {
     .setName("nowplaying")
     .setDescription("当前播放"),
   async execute(i: ChatInputCommandInteraction) {
-    const c = getQueue(i.guild!).current;
-    await i.reply({
-      content: c ? `🎵 **${c.title}**` : "（空）",
-      ephemeral: true,
-    });
+    const q = getQueue(i.guild!);
+    const embed = buildNowPlayingEmbed(q);
+    const row = buildControlRow(q);
+    await i.reply({ embeds: [embed], components: [row], ephemeral: true });
+
+    // 启动自动刷新（2 分钟），需要时可调第三个参数 ttlMs
+    startNowPlayingAutoRefresh(i, q, 2 * 60_000);
   },
 };
 

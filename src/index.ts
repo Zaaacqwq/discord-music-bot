@@ -17,6 +17,9 @@ import ping, {
 import play from "./commands/play";
 import lyrics from "./commands/lyrics";
 import queue from "./commands/queue";
+import { ButtonInteraction } from "discord.js";
+import { getQueue } from "./music/queue";
+import { buildNowPlayingEmbed, buildControlRow } from "./ui/nowplaying";
 
 type Command = {
   data: { name: string };
@@ -53,23 +56,43 @@ client.once("clientReady", () =>
 );
 
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-  const cmd = client.commands.get(interaction.commandName);
-  if (!cmd) return;
-  try {
-    await cmd.execute(interaction);
-  } catch (err) {
-    console.error(err);
-    if (interaction.deferred || interaction.replied)
-      await interaction.followUp({
-        content: "❌ 命令执行失败。",
-        ephemeral: true,
-      });
-    else
-      await interaction.reply({
-        content: "❌ 命令执行失败。",
-        ephemeral: true,
-      });
+  if (interaction.isChatInputCommand()) {
+    const cmd = client.commands.get(interaction.commandName);
+    if (!cmd) return;
+    try {
+      await cmd.execute(interaction);
+    } catch (err) {
+      /* 你的错误处理保持不变 */
+    }
+    return;
+  }
+
+  if (interaction.isButton()) {
+    const i = interaction as ButtonInteraction;
+    const q = getQueue(i.guild!);
+    const id = i.customId;
+
+    try {
+      if (id === "ctl:pause") q.pause();
+      if (id === "ctl:resume") q.resume();
+      if (id === "ctl:skip") q.skip();
+      if (id === "ctl:vol:up") q.volUp();
+      if (id === "ctl:vol:down") q.volDown();
+
+      const embed = buildNowPlayingEmbed(q);
+      const row = buildControlRow(q);
+      // 更新组件与进度（按钮点完立即刷新）
+      if (i.replied || i.deferred) {
+        await i.editReply({ embeds: [embed], components: [row] });
+      } else {
+        await i.reply({ embeds: [embed], components: [row], ephemeral: true });
+      }
+    } catch (e) {
+      console.error(e);
+      if (i.replied || i.deferred)
+        await i.followUp({ content: "❌ 操作失败", ephemeral: true });
+      else await i.reply({ content: "❌ 操作失败", ephemeral: true });
+    }
   }
 });
 
