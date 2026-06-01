@@ -1,0 +1,87 @@
+// ──────────────────────────────────────────────────────────────
+// Discord Music Bot — Prisma schema
+// SQLite by default; flip the provider + DATABASE_URL for Postgres.
+// ──────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Per-guild settings. Created lazily on first interaction.
+model GuildConfig {
+  guildId         String   @id
+  volume          Int      @default(80)
+  // Loop modes: "none" | "track" | "queue"
+  loopMode        String   @default("none")
+  // Stay in voice channel after the queue empties (24/7 mode).
+  alwaysOn        Boolean  @default(false)
+  // Last text channel the bot answered in — used to restore the now-playing panel.
+  defaultTextChannelId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  snapshot QueueSnapshot?
+}
+
+// One snapshot per guild — overwritten on every player update.
+// On startup the bot reads these to rejoin VC and restore queues.
+model QueueSnapshot {
+  guildId         String   @id
+  voiceChannelId  String
+  textChannelId   String
+  currentPositionMs Int    @default(0)
+  paused          Boolean  @default(false)
+  updatedAt       DateTime @updatedAt
+
+  guild  GuildConfig     @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+  tracks SnapshotTrack[]
+}
+
+model SnapshotTrack {
+  id          Int      @id @default(autoincrement())
+  snapshotId  String
+  position    Int      // 0 = currently playing, 1+ = upcoming
+  uri         String
+  title       String
+  author      String
+  durationMs  Int
+  requesterId String?
+  artworkUrl  String?
+  isrc        String?
+
+  snapshot QueueSnapshot @relation(fields: [snapshotId], references: [guildId], onDelete: Cascade)
+
+  @@index([snapshotId, position])
+}
+
+// User-saved playlists, scoped to the guild they were created in.
+model Playlist {
+  id        Int      @id @default(autoincrement())
+  guildId   String
+  ownerId   String
+  name      String
+  createdAt DateTime @default(now())
+
+  tracks PlaylistTrack[]
+
+  @@unique([guildId, ownerId, name])
+}
+
+model PlaylistTrack {
+  id         Int    @id @default(autoincrement())
+  playlistId Int
+  position   Int
+  uri        String
+  title      String
+  author     String
+  durationMs Int
+
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+
+  @@index([playlistId, position])
+}

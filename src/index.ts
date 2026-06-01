@@ -1,104 +1,84 @@
-import "dotenv/config";
 import {
   Client,
   GatewayIntentBits,
+  MessageFlags,
   Partials,
-  Collection,
-  ChatInputCommandInteraction,
 } from "discord.js";
-import ping, {
-  pause,
-  resume,
-  skip,
-  stop,
-  nowplaying,
-  volume,
-} from "./commands/basic";
-import play from "./commands/play";
-import lyrics from "./commands/lyrics";
-import queue from "./commands/queue";
-import { ButtonInteraction } from "discord.js";
-import { getQueue } from "./music/queue";
-import { buildNowPlayingEmbed, buildControlRow } from "./ui/nowplaying";
 
-type Command = {
-  data: { name: string };
-  execute: (interaction: ChatInputCommandInteraction) => Promise<void>;
-};
-
-declare module "discord.js" {
-  interface Client {
-    commands: Collection<string, Command>;
-  }
-}
+import { config } from "./config.js";
+import { logger } from "./logger.js";
+import { createManager } from "./lavalink/manager.js";
+import { registerManagerEvents } from "./lavalink/events.js";
+import { buildCommandCollection } from "./commands/index.js";
+import { handleButton } from "./interactions/buttons.js";
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
   partials: [Partials.Channel],
-}) as Client & { commands: Collection<string, Command> };
+});
 
-client.commands = new Collection<string, Command>();
-[
-  ping,
-  pause,
-  resume,
-  skip,
-  stop,
-  nowplaying,
-  volume,
-  play,
-  queue,
-  lyrics,
-].forEach((c) => client.commands.set(c.data.name, c));
+const manager = createManager(client);
+registerManagerEvents(client, manager);
+const commands = buildCommandCollection();
 
-client.once("clientReady", () =>
-  console.log(`[READY] Logged in as ${client.user?.tag}`)
-);
+client.once("clientReady", (c) => {
+  logger.info({ user: c.user.tag, guilds: c.guilds.cache.size }, "discord client ready");
+});
 
 client.on("interactionCreate", async (interaction) => {
-  if (interaction.isChatInputCommand()) {
-    const cmd = client.commands.get(interaction.commandName);
-    if (!cmd) return;
-    try {
-      await cmd.execute(interaction);
-    } catch (err) {
-      /* 你的错误处理保持不变 */
+  try {
+    if (interaction.isChatInputCommand()) {
+      const cmd = commands.get(interaction.commandName);
+      if (!cmd) return;
+      await cmd.execute({ interaction, manager });
+      return;
     }
-    return;
-  }
 
-  if (interaction.isButton()) {
-    const i = interaction as ButtonInteraction;
-    const q = getQueue(i.guild!);
-    const id = i.customId;
+    if (interaction.isAutocomplete()) {
+      const cmd = commands.get(interaction.commandName);
+      if (cmd?.autocomplete) await cmd.autocomplete(interaction, manager);
+      return;
+    }
 
-    try {
-      if (id === "ctl:pause") q.pause();
-      if (id === "ctl:resume") q.resume();
-      if (id === "ctl:skip") q.skip();
-      if (id === "ctl:vol:up") q.volUp();
-      if (id === "ctl:vol:down") q.volDown();
-
-      const embed = buildNowPlayingEmbed(q);
-      const row = buildControlRow(q);
-      // 更新组件与进度（按钮点完立即刷新）
-      if (i.replied || i.deferred) {
-        await i.editReply({ embeds: [embed], components: [row] });
-      } else {
-        await i.reply({ embeds: [embed], components: [row], ephemeral: true });
+    if (interaction.isButton()) {
+      await handleButton(interaction, manager);
+      return;
+    }
+  } catch (err) {
+    logger.error({ err, command: "commandName" in interaction ? interaction.commandName : null }, "interaction handler failed");
+    if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+      try {
+        await interaction.reply({
+          content: "❌ Something went wrong handling that interaction.",
+          flags: MessageFlags.Ephemeral,
+        });
+      } catch {
+        /* swallow — we already logged the real error */
       }
-    } catch (e) {
-      console.error(e);
-      if (i.replied || i.deferred)
-        await i.followUp({ content: "❌ 操作失败", ephemeral: true });
-      else await i.reply({ content: "❌ 操作失败", ephemeral: true });
     }
   }
 });
 
-const token = process.env.DISCORD_TOKEN;
-if (!token) {
-  console.error("Missing DISCORD_TOKEN in .env");
-  process.exit(1);
+async function shutdown(signal: string): Promise<void> {
+  logger.info({ signal }, "shutting down");
+  for (const player of manager.players.values()) {
+    try {
+      player.destroy();
+    } catch {
+      /* ignore — best-effort cleanup */
+    }
+  }
+  await client.destroy();
+  process.exit(0);
 }
-client.login(token);
+
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("unhandledRejection", (reason) => {
+  const err = reason instanceof Error
+    ? { name: reason.name, message: reason.message, stack: reason.stack }
+    : { value: reason };
+  logger.error({ err }, "unhandled promise rejection");
+});
+
+await client.login(config.discord.token);

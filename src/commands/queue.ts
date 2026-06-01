@@ -1,71 +1,116 @@
-// src/commands/queue.ts
-import { SlashCommandBuilder, ChatInputCommandInteraction } from "discord.js";
-import { getQueue } from "../music/queue";
-import { queueEmbed } from "../ui/queueMessage";
+import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import type { SlashCommand } from "./types.js";
+import { replyError, requireMemberVoice } from "../lib/voice.js";
+import { formatDuration, truncate } from "../lib/format.js";
 
-export default {
+const PAGE_SIZE = 10;
+
+const queueCommand: SlashCommand = {
   data: new SlashCommandBuilder()
     .setName("queue")
-    .setDescription("查看和管理队列")
-    .addSubcommand((sc) =>
-      sc.setName("show").setDescription("显示当前与后续曲目")
+    .setDescription("Manage the queue.")
+    .addSubcommand((s) =>
+      s
+        .setName("show")
+        .setDescription("List the upcoming queue.")
+        .addIntegerOption((o) =>
+          o.setName("page").setDescription("Page number (10 per page)").setMinValue(1),
+        ),
     )
-    .addSubcommand((sc) =>
-      sc
+    .addSubcommand((s) =>
+      s
         .setName("remove")
-        .setDescription("删除第 N 首（从下一首开始计 1）")
+        .setDescription("Remove a single track by its queue position.")
         .addIntegerOption((o) =>
           o
-            .setName("index")
-            .setDescription("要删除的序号（1 表示下一首）")
-            .setRequired(true)
+            .setName("position")
+            .setDescription("Position in the queue (starting at 1)")
             .setMinValue(1)
-        )
+            .setRequired(true),
+        ),
     )
-    .addSubcommand((sc) =>
-      sc
-        .setName("clear")
-        .setDescription("清空后续队列；all=true 时连当前也停止")
-        .addBooleanOption((o) =>
-          o
-            .setName("all")
-            .setDescription("是否包含当前播放（默认否）")
-            .setRequired(false)
+    .addSubcommand((s) => s.setName("clear").setDescription("Remove every upcoming track.")),
+
+  async execute({ interaction, manager }) {
+    if (!interaction.inCachedGuild()) return;
+    const player = manager.players.get(interaction.guildId);
+    if (!player) return replyError(interaction, "I'm not in a voice channel.");
+
+    const sub = interaction.options.getSubcommand(true);
+
+    if (sub === "show") {
+      const current = await player.queue.getCurrent();
+      const upcoming = await player.queue.getTracks();
+
+      if (!current && upcoming.length === 0) {
+        return replyError(interaction, "Queue is empty.");
+      }
+
+      const page = interaction.options.getInteger("page") ?? 1;
+      const totalPages = Math.max(1, Math.ceil(upcoming.length / PAGE_SIZE));
+      const safePage = Math.min(page, totalPages);
+      const start = (safePage - 1) * PAGE_SIZE;
+      const slice = upcoming.slice(start, start + PAGE_SIZE);
+
+      const lines = slice.map((track, i) => {
+        const idx = start + i + 1;
+        return `\`${idx.toString().padStart(2, "0")}.\` [${truncate(track.title, 60)}](${track.uri}) — \`${formatDuration(track.duration ?? 0)}\``;
+      });
+
+      const totalDuration = upcoming.reduce((sum, t) => sum + (t.duration ?? 0), 0);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x1db954)
+        .setTitle("Queue")
+        .setDescription(
+          [
+            current
+              ? `**Now playing**\n[${truncate(current.title, 60)}](${current.uri}) — \`${formatDuration(current.duration ?? 0)}\`\n`
+              : "",
+            upcoming.length > 0 ? "**Up next**" : "*No upcoming tracks.*",
+            ...lines,
+          ]
+            .filter(Boolean)
+            .join("\n"),
         )
-    ),
-  async execute(i: ChatInputCommandInteraction) {
-    const q = getQueue(i.guild!);
-    const sub = i.options.getSubcommand();
+        .setFooter({
+          text: `Page ${safePage}/${totalPages} • ${upcoming.length} upcoming • ${formatDuration(totalDuration)} total`,
+        });
+
+      await interaction.reply({ embeds: [embed] });
+      return;
+    }
 
     if (sub === "remove") {
-      const idx = i.options.getInteger("index", true);
-      const removed = (q as any).removeAt(idx);
-      if (!removed) {
-        await i.reply({
-          content: `❌ 没有第 **${idx}** 首。`,
-          ephemeral: true,
-        });
-        return;
+      const voice = await requireMemberVoice(interaction);
+      if (!voice.ok) return replyError(interaction, voice.reason);
+
+      const size = await player.queue.size();
+      const pos = interaction.options.getInteger("position", true) - 1;
+      if (pos < 0 || pos >= size) {
+        return replyError(interaction, `Position must be between 1 and ${size}.`);
       }
-      await i.reply({
-        content: `🗑️ 已移除第 **${idx}** 首：**${removed.title}**`,
-        ephemeral: true,
+      const removed = (await player.queue.remove(pos, pos + 1))[0];
+      await interaction.reply({
+        content: removed
+          ? `🗑️ Removed **${truncate(removed.title, 70)}** from the queue.`
+          : "🗑️ Removed track from the queue.",
       });
       return;
     }
 
     if (sub === "clear") {
-      const all = i.options.getBoolean("all") ?? false;
-      (q as any).clear(all);
-      await i.reply({
-        content: all ? "🧹 已清空队列并停止播放。" : "🧹 已清空后续队列。",
-        ephemeral: true,
+      const voice = await requireMemberVoice(interaction);
+      if (!voice.ok) return replyError(interaction, voice.reason);
+
+      const count = await player.queue.size();
+      await player.queue.clear();
+      await interaction.reply({
+        content: `🗑️ Cleared **${count}** track${count === 1 ? "" : "s"} from the queue.`,
       });
       return;
     }
-
-    // 默认：show
-    const embed = queueEmbed(q);
-    await i.reply({ embeds: [embed], ephemeral: true });
   },
 };
+
+export default queueCommand;

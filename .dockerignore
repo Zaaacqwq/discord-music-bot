@@ -1,0 +1,38 @@
+node_modules
+dist
+build
+*.tsbuildinfo
+
+# Local env — passed in via env_file in compose
+.env
+.env.local
+.env.*.local
+
+# VCS / IDE / OS
+.git
+.gitignore
+.gitattributes
+.vscode
+.idea
+.DS_Store
+
+# Lavalink runtime
+lavalink/plugins
+lavalink/logs
+
+# Local Prisma DB — comes in via volume mount, not the image
+prisma/dev.db
+prisma/dev.db-journal
+
+# Docs and docker meta
+README.md
+docker-compose.yml
+docker-compose.override.yml
+Dockerfile
+.dockerignore
+
+# Misc
+coverage
+.tmp
+.temp
+.cache

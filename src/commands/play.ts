@@ -1,89 +1,107 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction } from "discord.js";
-import { getQueue } from "../music/queue";
-import { resolvePlay } from "../music/router";
-import type { PlayResolved } from "../types";
-import { ensureNowPlayingPanel } from "../ui/nowplaying";
+import { SlashCommandBuilder } from "discord.js";
+import type { SearchResult } from "magmastream";
+import type { SlashCommand } from "./types.js";
+import { replyError, requireMemberVoice } from "../lib/voice.js";
+import { logger } from "../logger.js";
+import { truncate } from "../lib/format.js";
+import { startIfIdle } from "../lib/playback.js";
 
-export default {
+const play: SlashCommand = {
   data: new SlashCommandBuilder()
     .setName("play")
-    .setDescription("播放链接或歌曲名")
+    .setDescription("Play a track or playlist from a URL or search query.")
     .addStringOption((o) =>
       o
         .setName("query")
-        .setDescription("链接或关键字（支持 Spotify / YouTube / 歌手+歌名）")
-        .setRequired(true)
+        .setDescription("URL (YouTube/Spotify/SoundCloud) or a search query")
+        .setRequired(true),
     )
     .addBooleanOption((o) =>
-      o.setName("next").setDescription("是否插队为下一首").setRequired(false)
+      o
+        .setName("next")
+        .setDescription("Insert at the front of the queue instead of the end")
+        .setRequired(false),
     ),
-  async execute(interaction: ChatInputCommandInteraction) {
-    const member = interaction.guild!.members.cache.get(interaction.user.id);
-    const vc = member?.voice.channel;
-    if (!vc) {
-      await interaction.reply({
-        content: "请先进入一个语音频道。",
-        ephemeral: true,
-      });
+
+  async execute({ interaction, manager }) {
+    const voice = await requireMemberVoice(interaction);
+    if (!voice.ok) {
+      await replyError(interaction, voice.reason);
       return;
     }
+    if (!interaction.inCachedGuild()) return;
 
-    await interaction.deferReply({ ephemeral: true });
-
-    const q = getQueue(interaction.guild!);
-    if (typeof (q as any).ensureConnected === "function") {
-      await (q as any).ensureConnected(vc);
-    } else if (!q.voice) {
-      await q.connect(vc);
-    }
+    await interaction.deferReply();
 
     const query = interaction.options.getString("query", true);
-    const isNext = interaction.options.getBoolean("next") ?? false;
+    const playNext = interaction.options.getBoolean("next") ?? false;
 
-    const resolved = (await resolvePlay(query)) as PlayResolved;
+    const player = manager.create({
+      guildId: interaction.guildId,
+      textChannelId: interaction.channelId,
+      voiceChannelId: voice.voiceChannelId,
+      selfDeafen: true,
+      volume: 80,
+    });
 
-    if (resolved.kind === "track") {
-      const track = {
-        title: resolved.title,
-        url: resolved.url,
-        requestedBy: interaction.user.tag,
-      };
-      if (isNext && typeof (q as any).enqueueNext === "function")
-        (q as any).enqueueNext(track);
-      else q.enqueue(track);
-      await interaction.editReply(
-        `${isNext ? "⏭️ 已插队为下一首" : "🎵 已加入队列"}：**${track.title}**`
-      );
-      await ensureNowPlayingPanel(interaction, q);
+    if (player.state !== "CONNECTED") player.connect();
+
+    let result: SearchResult;
+    try {
+      result = await player.search(query, interaction.user);
+    } catch (err) {
+      logger.error({ err, query }, "search failed");
+      if (!(await player.queue.getCurrent())) await player.destroy();
+      await interaction.editReply({ content: `❌ Search failed: \`${truncate(query, 80)}\`` });
       return;
     }
 
-    if (resolved.kind === "playlist") {
-      const items = resolved.items.map((i) => ({
-        title: i.title,
-        url: i.url,
-        requestedBy: interaction.user.tag,
-      }));
-
-      if (isNext && typeof (q as any).enqueueManyNext === "function") {
-        (q as any).enqueueManyNext(items);
-        await interaction.editReply(
-          `⏭️ 歌单已插到“下一首”：**${items.length}** 首${
-            resolved.title ? `（${resolved.title}）` : ""
-          }`
-        );
-      } else {
-        q.enqueueMany(items);
-        await interaction.editReply(
-          `📚 歌单加入：**${items.length}** 首${
-            resolved.title ? `（${resolved.title}）` : ""
-          }`
-        );
+    switch (result.loadType) {
+      case "empty": {
+        if (!(await player.queue.getCurrent())) await player.destroy();
+        await interaction.editReply({ content: `🤷 No matches for \`${truncate(query, 80)}\`.` });
+        return;
       }
-      await ensureNowPlayingPanel(interaction, q);
-      return;
-    }
+      case "error": {
+        if (!(await player.queue.getCurrent())) await player.destroy();
+        await interaction.editReply({ content: `❌ Load failed for \`${truncate(query, 80)}\`.` });
+        return;
+      }
+      case "track":
+      case "search": {
+        const track = result.tracks[0];
+        if (!track) {
+          await interaction.editReply({ content: `🤷 No playable track in result.` });
+          return;
+        }
+        // add(track, 0) inserts at the front when there's already a current track,
+        // and auto-sets-as-current when the queue is empty. add(track) appends.
+        await player.queue.add(track, playNext ? 0 : undefined);
 
-    await interaction.editReply(`未找到可播放的音频：**${resolved.title}**`);
+        await startIfIdle(player);
+        await interaction.editReply({
+          content: `➕ Queued **[${truncate(track.title, 70)}](${track.uri})**${playNext ? " *(up next)*" : ""}`,
+        });
+        return;
+      }
+      case "playlist": {
+        const playlist = result.playlist;
+        if (!playlist?.tracks?.length) {
+          await interaction.editReply({ content: `🤷 Playlist is empty.` });
+          return;
+        }
+        await player.queue.add(playlist.tracks);
+        await startIfIdle(player);
+        await interaction.editReply({
+          content: `🎵 Queued playlist **${truncate(playlist.name ?? "Unknown", 70)}** (${playlist.tracks.length} tracks)`,
+        });
+        return;
+      }
+      default: {
+        await interaction.editReply({ content: `❓ Unknown load type.` });
+      }
+    }
   },
 };
+
+export default play;
