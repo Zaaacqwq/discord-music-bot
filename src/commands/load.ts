@@ -3,6 +3,7 @@ import type { Track } from "magmastream";
 import type { SlashCommand } from "./types.js";
 import { replyError, requireMemberVoice } from "../lib/voice.js";
 import { getPlaylist, listMyPlaylists } from "../db/playlists.js";
+import { getMusicChannel } from "../db/guildConfig.js";
 import { truncate } from "../lib/format.js";
 import { startIfIdle } from "../lib/playback.js";
 import { logger } from "../logger.js";
@@ -47,9 +48,10 @@ const load: SlashCommand = {
 
     await interaction.deferReply();
 
+    const pinnedChannelId = await getMusicChannel(interaction.guildId);
     const player = manager.create({
       guildId: interaction.guildId,
-      textChannelId: interaction.channelId,
+      textChannelId: pinnedChannelId ?? interaction.channelId,
       voiceChannelId: voice.voiceChannelId,
       selfDeafen: true,
       volume: 80,

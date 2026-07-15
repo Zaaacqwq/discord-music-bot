@@ -16,6 +16,7 @@ import twentyFourSeven from "./twentyFourSeven.js";
 import save from "./save.js";
 import playlists from "./playlists.js";
 import load from "./load.js";
+import musicchannel from "./musicchannel.js";
 
 export const commands: ReadonlyArray<SlashCommand> = [
   play,
@@ -33,6 +34,7 @@ export const commands: ReadonlyArray<SlashCommand> = [
   save,
   playlists,
   load,
+  musicchannel,
 ];
 
 export function buildCommandCollection(): Collection<string, SlashCommand> {

@@ -5,6 +5,7 @@ import { replyError, requireMemberVoice } from "../lib/voice.js";
 import { logger } from "../logger.js";
 import { truncate } from "../lib/format.js";
 import { startIfIdle } from "../lib/playback.js";
+import { getMusicChannel } from "../db/guildConfig.js";
 
 const play: SlashCommand = {
   data: new SlashCommandBuilder()
@@ -36,9 +37,10 @@ const play: SlashCommand = {
     const query = interaction.options.getString("query", true);
     const playNext = interaction.options.getBoolean("next") ?? false;
 
+    const pinnedChannelId = await getMusicChannel(interaction.guildId);
     const player = manager.create({
       guildId: interaction.guildId,
-      textChannelId: interaction.channelId,
+      textChannelId: pinnedChannelId ?? interaction.channelId,
       voiceChannelId: voice.voiceChannelId,
       selfDeafen: true,
       volume: 80,
