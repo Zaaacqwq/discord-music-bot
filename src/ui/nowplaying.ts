@@ -13,7 +13,14 @@ export const PANEL_BUTTON_IDS = {
   stop: "ctl:stop",
   loop: "ctl:loop",
   shuffle: "ctl:shuffle",
+  volumeDown: "ctl:volumeDown",
+  volumeUp: "ctl:volumeUp",
 } as const;
+
+// Matches the /volume slash command's bounds.
+export const VOLUME_MIN = 0;
+export const VOLUME_MAX = 150;
+export const VOLUME_STEP = 10;
 
 export async function buildNowPlayingEmbed(player: Player, track: Track): Promise<EmbedBuilder> {
   const position = player.position ?? 0;
@@ -52,12 +59,13 @@ export async function buildNowPlayingEmbed(player: Player, track: Track): Promis
   return embed;
 }
 
-export async function buildControlRow(player: Player): Promise<ActionRowBuilder<ButtonBuilder>> {
+export async function buildControlRows(player: Player): Promise<ActionRowBuilder<ButtonBuilder>[]> {
   const isPaused = player.paused;
   const queueSize = await player.queue.size();
   const current = await player.queue.getCurrent();
+  const volume = player.volume ?? 100;
 
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+  const playbackRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(PANEL_BUTTON_IDS.pauseToggle)
       .setEmoji(isPaused ? "▶️" : "⏸️")
@@ -83,4 +91,24 @@ export async function buildControlRow(player: Player): Promise<ActionRowBuilder<
       .setEmoji("⏹️")
       .setStyle(ButtonStyle.Danger),
   );
+
+  const volumeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(PANEL_BUTTON_IDS.volumeDown)
+      .setEmoji("🔉")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(volume <= VOLUME_MIN),
+    new ButtonBuilder()
+      .setCustomId("ctl:volumeDisplay")
+      .setLabel(`${volume}%`)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(true),
+    new ButtonBuilder()
+      .setCustomId(PANEL_BUTTON_IDS.volumeUp)
+      .setEmoji("🔊")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(volume >= VOLUME_MAX),
+  );
+
+  return [playbackRow, volumeRow];
 }

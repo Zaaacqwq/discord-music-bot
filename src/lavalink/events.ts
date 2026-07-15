@@ -6,7 +6,7 @@ import {
   type Track,
 } from "magmastream";
 import { logger } from "../logger.js";
-import { buildControlRow, buildNowPlayingEmbed } from "../ui/nowplaying.js";
+import { buildControlRows, buildNowPlayingEmbed } from "../ui/nowplaying.js";
 import { startPanelRefresh, stopPanelRefresh } from "../ui/panelRefresh.js";
 import { isAlwaysOn } from "../db/guildConfig.js";
 
@@ -61,7 +61,7 @@ export function registerManagerEvents(client: Client, manager: DiscordJSManager)
       try {
         const message = await channel.send({
           embeds: [await buildNowPlayingEmbed(player, track)],
-          components: [await buildControlRow(player)],
+          components: await buildControlRows(player),
         });
         // Remember the panel message so button handlers + the refresher can edit it.
         player.set("panelMessageId", message.id);

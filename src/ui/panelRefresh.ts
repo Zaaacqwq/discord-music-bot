@@ -1,7 +1,7 @@
 import type { Client } from "discord.js";
 import type { Player } from "magmastream";
 import { logger } from "../logger.js";
-import { buildControlRow, buildNowPlayingEmbed } from "./nowplaying.js";
+import { buildControlRows, buildNowPlayingEmbed } from "./nowplaying.js";
 
 // Discord rate limits message edits at ~5/5s per channel. 8s gives headroom
 // while still moving the progress bar visibly (~13% of a 60s track per tick).
@@ -60,7 +60,7 @@ export function startPanelRefresh(client: Client, player: Player): void {
 
       await message.edit({
         embeds: [await buildNowPlayingEmbed(player, current)],
-        components: [await buildControlRow(player)],
+        components: await buildControlRows(player),
       });
     } catch (err) {
       logger.warn({ err, guild: player.guildId }, "panel refresh tick failed");

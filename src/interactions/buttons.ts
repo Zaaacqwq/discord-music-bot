@@ -1,7 +1,14 @@
 import { ButtonInteraction, MessageFlags } from "discord.js";
 import type { DiscordJSManager } from "magmastream";
 import { logger } from "../logger.js";
-import { buildControlRow, buildNowPlayingEmbed, PANEL_BUTTON_IDS } from "../ui/nowplaying.js";
+import {
+  buildControlRows,
+  buildNowPlayingEmbed,
+  PANEL_BUTTON_IDS,
+  VOLUME_MAX,
+  VOLUME_MIN,
+  VOLUME_STEP,
+} from "../ui/nowplaying.js";
 
 export async function handleButton(
   interaction: ButtonInteraction,
@@ -52,6 +59,12 @@ export async function handleButton(
       case PANEL_BUTTON_IDS.shuffle:
         await player.queue.shuffle();
         break;
+      case PANEL_BUTTON_IDS.volumeDown:
+        await player.setVolume(Math.max(VOLUME_MIN, (player.volume ?? 100) - VOLUME_STEP));
+        break;
+      case PANEL_BUTTON_IDS.volumeUp:
+        await player.setVolume(Math.min(VOLUME_MAX, (player.volume ?? 100) + VOLUME_STEP));
+        break;
       default:
         await interaction.reply({ content: "Unknown control.", flags: MessageFlags.Ephemeral });
         return;
@@ -65,7 +78,7 @@ export async function handleButton(
 
     await interaction.update({
       embeds: [await buildNowPlayingEmbed(player, current)],
-      components: [await buildControlRow(player)],
+      components: await buildControlRows(player),
     });
   } catch (err) {
     logger.error({ err, customId: interaction.customId }, "button handler failed");
@@ -74,4 +87,3 @@ export async function handleButton(
     }
   }
 }
-

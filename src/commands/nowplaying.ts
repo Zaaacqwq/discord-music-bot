@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from "discord.js";
 import type { SlashCommand } from "./types.js";
 import { replyError } from "../lib/voice.js";
-import { buildControlRow, buildNowPlayingEmbed } from "../ui/nowplaying.js";
+import { buildControlRows, buildNowPlayingEmbed } from "../ui/nowplaying.js";
 
 const nowplaying: SlashCommand = {
   data: new SlashCommandBuilder()
@@ -17,7 +17,7 @@ const nowplaying: SlashCommand = {
 
     await interaction.reply({
       embeds: [await buildNowPlayingEmbed(player, current)],
-      components: [await buildControlRow(player)],
+      components: await buildControlRows(player),
     });
   },
 };
