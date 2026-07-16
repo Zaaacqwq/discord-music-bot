@@ -114,8 +114,27 @@ pnpm build && pnpm start
 | `/loop <off\|track\|queue>` | Set loop mode. |
 | `/shuffle` | Shuffle the upcoming queue. |
 | `/seek <position>` | Jump to `m:ss`, `h:mm:ss`, or a raw second count in the current track. |
+| `/247 [mode:on\|off]` | Stay in voice 24/7. When off, the bot disconnects after 5 min of silence. |
+| `/save <name> [replace]` | Save the current queue (and current track) as a named playlist. |
+| `/playlists list` / `delete <name>` | Manage your saved playlists. |
+| `/load <name> [replace]` | Load a saved playlist into the queue. |
+| `/musicchannel [channel] [clear]` | Pin all bot output to one channel *(Manage Server)*. |
+| `/greet set\|remove\|list` | Auto-greeting: when the chosen user joins voice, the bot hops in, plays a clip, and leaves *(Manage Server)*. |
 
-The now-playing panel posts on every `trackStart` with pause/skip/loop/shuffle/stop buttons. Only members in the same voice channel as the bot can drive the controls.
+### Now-playing panel
+
+A single panel message is posted on the first track and **edited in place** on every track
+change — no per-track spam. Controls: ⏮️ previous, ⏸️/▶️ pause-resume, ⏭️ skip, 🔁 loop,
+🔀 shuffle, plus a volume row (🔉 / current % / 🔊) and ⏹️ stop. Button clicks repaint the
+panel instantly; otherwise it auto-refreshes every 8 s (Discord edit rate limits). Only
+members in the same voice channel as the bot can drive the controls.
+
+### Pinned music channel
+
+`/musicchannel channel:#music` routes **all** command output (panels, queue listings,
+confirmations) to that channel, no matter where the command was typed — the invoker gets
+an ephemeral pointer instead. Error replies stay ephemeral in place. `/musicchannel clear:true`
+turns it off.
 
 ---
 
@@ -123,8 +142,9 @@ The now-playing panel posts on every `trackStart` with pause/skip/loop/shuffle/s
 
 - **No audio in Node.** Every audio frame flows Java→Discord over the Lavalink WebSocket. Node only sends gateway voice updates (`client.on("raw", …) → manager.updateVoiceState`) and high-level commands.
 - **Spotify is honest.** The bot does not stream Spotify directly (Spotify's TOS forbids it). LavaSrc reads Spotify metadata + ISRC, then asks `youtube-source` for `"ytsearch:\"%ISRC%\""` first — that yields the exact same recording on YouTube, not just a title match.
-- **Auto-disconnect.** 5 minutes after the queue empties the bot leaves the channel. (`alwaysOn` per-guild flag exists in the schema for a future 24/7 toggle.)
-- **Persistence.** Prisma + SQLite. Tables include `GuildConfig`, `QueueSnapshot` + `SnapshotTrack`, and user `Playlist`s. The wiring for queue-restore-on-restart is scaffolded but not consumed yet — V1 plays cleanly in-memory; V1.1 will read snapshots on `nodeConnect`.
+- **Auto-disconnect.** 5 minutes after the queue empties the bot leaves the channel, unless `/247 mode:on` is set for the guild.
+- **Voice greetings.** `local: true` in `application.yml` plus a read-only `./lavalink/sounds → /opt/Lavalink/sounds` mount let Lavalink play local clips (`local:sounds/foo.mp3`). Greeting players are tagged `isGreeting` so they skip the now-playing panel and idle logic entirely, and a per-user cooldown stops rejoin spam.
+- **Persistence.** Prisma + SQLite. Tables include `GuildConfig` (24/7 flag + pinned music channel), `VoiceGreeting`, `QueueSnapshot` + `SnapshotTrack`, and user `Playlist`s. The wiring for queue-restore-on-restart is scaffolded but not consumed yet — V1 plays cleanly in-memory; V1.1 will read snapshots on `nodeConnect`.
 
 ---
 
