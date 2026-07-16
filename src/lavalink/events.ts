@@ -52,17 +52,33 @@ export function registerManagerEvents(client: Client, manager: DiscordJSManager)
     })
     .on(ManagerEventTypes.TrackStart, async (player: Player, track: Track) => {
       clearIdleTimer(player.guildId);
-      // Drop the previous track's refresher before we send (and start) a new panel.
+      // Drop the previous track's refresher before we reuse (or send) the panel.
       stopPanelRefresh(player.guildId);
 
       const channel = await fetchTextChannel(client, player.textChannelId);
       if (!channel?.isSendable()) return;
 
+      const payload = {
+        embeds: [await buildNowPlayingEmbed(player, track)],
+        components: await buildControlRows(player),
+      };
+
       try {
-        const message = await channel.send({
-          embeds: [await buildNowPlayingEmbed(player, track)],
-          components: await buildControlRows(player),
-        });
+        // Reuse the existing panel message so track changes don't spam the
+        // channel. Falls through to sending a fresh one if it was deleted or
+        // lives in a different (stale) channel.
+        const existingId = player.get<string | undefined>("panelMessageId");
+        const existingChannelId = player.get<string | undefined>("panelChannelId");
+        if (existingId && existingChannelId === channel.id) {
+          const existing = await channel.messages.fetch(existingId).catch(() => null);
+          if (existing) {
+            await existing.edit(payload);
+            startPanelRefresh(client, player);
+            return;
+          }
+        }
+
+        const message = await channel.send(payload);
         // Remember the panel message so button handlers + the refresher can edit it.
         player.set("panelMessageId", message.id);
         player.set("panelChannelId", channel.id);
