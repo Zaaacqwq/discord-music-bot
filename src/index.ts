@@ -13,9 +13,10 @@ import { buildCommandCollection } from "./commands/index.js";
 import { handleButton } from "./interactions/buttons.js";
 import { applyChannelRedirect } from "./lib/redirect.js";
 import { getMusicChannel } from "./db/guildConfig.js";
+import { registerVoiceGreetings } from "./lib/greeting.js";
 
 // Settings commands answer where they're asked — redirecting them is confusing.
-const REDIRECT_EXEMPT = new Set(["musicchannel", "247"]);
+const REDIRECT_EXEMPT = new Set(["musicchannel", "247", "greet"]);
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
@@ -24,6 +25,7 @@ const client = new Client({
 
 const manager = createManager(client);
 registerManagerEvents(client, manager);
+registerVoiceGreetings(client, manager);
 const commands = buildCommandCollection();
 
 client.once("clientReady", (c) => {

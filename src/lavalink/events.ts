@@ -51,6 +51,9 @@ export function registerManagerEvents(client: Client, manager: DiscordJSManager)
       logger.error({ node: node.options.identifier, err: error }, "lavalink node error");
     })
     .on(ManagerEventTypes.TrackStart, async (player: Player, track: Track) => {
+      // Greeting players are ephemeral — no panel, no refresher.
+      if (player.get<boolean | undefined>("isGreeting")) return;
+
       clearIdleTimer(player.guildId);
       // Drop the previous track's refresher before we reuse (or send) the panel.
       stopPanelRefresh(player.guildId);
@@ -102,6 +105,12 @@ export function registerManagerEvents(client: Client, manager: DiscordJSManager)
       );
     })
     .on(ManagerEventTypes.QueueEnd, async (player) => {
+      // Greeting clip finished — leave immediately, no notices or idle wait.
+      if (player.get<boolean | undefined>("isGreeting")) {
+        await player.destroy();
+        return;
+      }
+
       clearIdleTimer(player.guildId);
       stopPanelRefresh(player.guildId);
 

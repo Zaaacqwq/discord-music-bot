@@ -13,6 +13,8 @@ services:
       - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
       - ./lavalink/plugins:/opt/Lavalink/plugins
       - ./lavalink/logs:/opt/Lavalink/logs
+      # Short local clips (voice greetings) playable via the `local` source.
+      - ./lavalink/sounds:/opt/Lavalink/sounds:ro
     ports:
       - "127.0.0.1:2333:2333"
     healthcheck:

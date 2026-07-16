@@ -59,6 +59,21 @@ model SnapshotTrack {
   @@index([snapshotId, position])
 }
 
+// Auto-greeting: when this user joins a voice channel, the bot hops in,
+// plays soundUri (a Lavalink `local:` path or any playable URL), and leaves.
+model VoiceGreeting {
+  guildId     String
+  userId      String
+  soundUri    String
+  enabled     Boolean  @default(true)
+  // Minimum seconds between greetings for the same user (rejoin spam guard).
+  cooldownSec Int      @default(60)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@id([guildId, userId])
+}
+
 // User-saved playlists, scoped to the guild they were created in.
 model Playlist {
   id        Int      @id @default(autoincrement())
