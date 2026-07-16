@@ -8,6 +8,7 @@ import type { Player, Track } from "magmastream";
 import { formatDuration, progressBar, truncate } from "../lib/format.js";
 
 export const PANEL_BUTTON_IDS = {
+  previous: "ctl:previous",
   pauseToggle: "ctl:pauseToggle",
   skip: "ctl:skip",
   stop: "ctl:stop",
@@ -64,8 +65,14 @@ export async function buildControlRows(player: Player): Promise<ActionRowBuilder
   const queueSize = await player.queue.size();
   const current = await player.queue.getCurrent();
   const volume = player.volume ?? 100;
+  const previousCount = (await player.queue.getPrevious()).length;
 
   const playbackRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(PANEL_BUTTON_IDS.previous)
+      .setEmoji("⏮️")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(previousCount === 0),
     new ButtonBuilder()
       .setCustomId(PANEL_BUTTON_IDS.pauseToggle)
       .setEmoji(isPaused ? "▶️" : "⏸️")
@@ -86,10 +93,6 @@ export async function buildControlRows(player: Player): Promise<ActionRowBuilder
       .setEmoji("🔀")
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(queueSize < 2),
-    new ButtonBuilder()
-      .setCustomId(PANEL_BUTTON_IDS.stop)
-      .setEmoji("⏹️")
-      .setStyle(ButtonStyle.Danger),
   );
 
   const volumeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -108,6 +111,10 @@ export async function buildControlRows(player: Player): Promise<ActionRowBuilder
       .setEmoji("🔊")
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(volume >= VOLUME_MAX),
+    new ButtonBuilder()
+      .setCustomId(PANEL_BUTTON_IDS.stop)
+      .setEmoji("⏹️")
+      .setStyle(ButtonStyle.Danger),
   );
 
   return [playbackRow, volumeRow];

@@ -34,6 +34,19 @@ export async function handleButton(
 
   try {
     switch (interaction.customId) {
+      case PANEL_BUTTON_IDS.previous: {
+        const previous = await player.queue.getPrevious();
+        if (previous.length === 0) {
+          await interaction.reply({
+            content: "❌ No previous track.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        // Put the current track back at the front so ⏭️ returns to it.
+        await player.previous(true);
+        break;
+      }
       case PANEL_BUTTON_IDS.pauseToggle:
         await player.pause(!player.paused);
         break;
