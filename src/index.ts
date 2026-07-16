@@ -11,6 +11,11 @@ import { createManager } from "./lavalink/manager.js";
 import { registerManagerEvents } from "./lavalink/events.js";
 import { buildCommandCollection } from "./commands/index.js";
 import { handleButton } from "./interactions/buttons.js";
+import { applyChannelRedirect } from "./lib/redirect.js";
+import { getMusicChannel } from "./db/guildConfig.js";
+
+// Settings commands answer where they're asked — redirecting them is confusing.
+const REDIRECT_EXEMPT = new Set(["musicchannel", "247"]);
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
@@ -30,6 +35,12 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.isChatInputCommand()) {
       const cmd = commands.get(interaction.commandName);
       if (!cmd) return;
+      if (interaction.inCachedGuild() && !REDIRECT_EXEMPT.has(interaction.commandName)) {
+        const pinned = await getMusicChannel(interaction.guildId);
+        if (pinned && pinned !== interaction.channelId) {
+          applyChannelRedirect(interaction, pinned);
+        }
+      }
       await cmd.execute({ interaction, manager });
       return;
     }
