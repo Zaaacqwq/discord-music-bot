@@ -1,6 +1,7 @@
 import { ButtonInteraction, MessageFlags } from "discord.js";
 import type { DiscordJSManager } from "magmastream";
 import { logger } from "../logger.js";
+import { startPanelRefresh } from "../ui/panelRefresh.js";
 import {
   buildControlRows,
   buildNowPlayingEmbed,
@@ -43,17 +44,22 @@ export async function handleButton(
           });
           return;
         }
+        // Ack only — the TrackStart handler repaints the panel with the new
+        // track. Rendering here would race it and win with stale data.
+        await interaction.deferUpdate();
         // Put the current track back at the front so ⏭️ returns to it.
         await player.previous(true);
-        break;
+        return;
       }
       case PANEL_BUTTON_IDS.pauseToggle:
         await player.pause(!player.paused);
         break;
       case PANEL_BUTTON_IDS.skip:
+        // Ack only — see previous. TrackStart owns the repaint after a skip.
+        await interaction.deferUpdate();
         // Lavalink's trackEnd handler auto-pulls the next track via playNextOnEnd.
         await player.stop();
-        break;
+        return;
       case PANEL_BUTTON_IDS.stop:
         await player.destroy();
         await interaction.update({ components: [], embeds: [], content: "⏹️ Stopped." });
@@ -93,6 +99,9 @@ export async function handleButton(
       embeds: [await buildNowPlayingEmbed(player, current)],
       components: await buildControlRows(player),
     });
+    // The click already repainted the panel — restart the auto-refresh timer
+    // so the next scheduled edit lands a full interval from now.
+    startPanelRefresh(interaction.client, player);
   } catch (err) {
     logger.error({ err, customId: interaction.customId }, "button handler failed");
     if (!interaction.replied && !interaction.deferred) {
@@ -100,3 +109,4 @@ export async function handleButton(
     }
   }
 }
+
